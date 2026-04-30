@@ -1,0 +1,84 @@
+name: grader-smoke
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Smoke test: verifies that all grader scripts parse, score.py runs end-to-end on
+# canned tier outputs, and the Tier 0 forbidden-paths check works as expected.
+# Does NOT build LLVM (would take 30+ min on GitHub free runners) — that runs in
+# the Docker image instead.
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: shellcheck grader scripts
+        run: shellcheck grader/*.sh scripts/*.sh docker/*.sh
+
+  score-py-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: simulate perfect-pass scoring
+        run: |
+          python3 grader/score.py \
+            --tier0  '{"score":5, "max":5,  "details":{"build_ok":1}}' \
+            --tier1  '{"score":30,"max":30, "details":{}}' \
+            --tier2  '{"score":35,"max":35, "details":{"programs_passing":30,"bonus":5}}' \
+            --tier3a '{"score":15,"max":15, "details":{"snippets_passing":10}}' \
+            --tier3b '{"score":5, "max":5,  "details":{"matching":50}}' \
+            --tier4  '{"score":10,"max":10, "details":{"matching":70,"total":70}}' \
+            --task   "llvm_riscv_custom_ext_instance_1" \
+            --output /tmp/scorecard.json
+          cat /tmp/scorecard.json
+          test "$(jq -r .total /tmp/scorecard.json)" = "100"
+          test "$(jq -r .pass /tmp/scorecard.json)" = "true"
+          test "$(jq -r .strong_pass /tmp/scorecard.json)" = "true"
+      - name: simulate failing scoring
+        run: |
+          python3 grader/score.py \
+            --tier0  '{"score":5, "max":5}' \
+            --tier1  '{"score":15,"max":30}' \
+            --tier2  '{"score":10,"max":35}' \
+            --tier3a '{"score":3, "max":15}' \
+            --tier3b '{"score":5, "max":5}' \
+            --tier4  '{"score":2, "max":10}' \
+            --task   "llvm_riscv_custom_ext_instance_1" \
+            --output /tmp/fail.json
+          test "$(jq -r .total /tmp/fail.json)" = "40"
+          test "$(jq -r .pass /tmp/fail.json)" = "false"
+
+  docs-links:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: verify internal links resolve
+        run: |
+          # Walk every .md, extract relative links, ensure target file exists.
+          python3 - <<'EOF'
+          import pathlib, re, sys
+          root = pathlib.Path('.')
+          link_re = re.compile(r'\[[^\]]+\]\(([^)]+)\)')
+          missing = []
+          for md in root.rglob('*.md'):
+              if '/llvm-project/' in str(md): continue
+              for m in link_re.finditer(md.read_text(errors='ignore')):
+                  link = m.group(1).split('#')[0]
+                  if not link or link.startswith(('http://', 'https://', 'mailto:')):
+                      continue
+                  target = (md.parent / link).resolve()
+                  if not target.exists():
+                      missing.append(f"{md}: -> {link}")
+          if missing:
+              print("Broken internal links:")
+              for x in missing: print(f"  {x}")
+              sys.exit(1)
+          print("All internal links resolve.")
+          EOF

@@ -1,0 +1,37 @@
+# Build artifacts
+build/
+build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.elf
+
+# LLVM bundled payload (distributed via Drive/release tarball, not git)
+llvm-project/
+llvm-test-suite/
+spike/build/
+spike/install/
+
+# ccache
+.ccache/
+
+# Grader output
+scorecard.json
+scorecard-*.json
+*.log
+grader-tmp/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

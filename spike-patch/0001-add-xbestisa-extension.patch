@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Agent-LE Task Author <agent-le@example.org>
+Date: Thu, 1 Jan 2026 00:00:00 +0000
+Subject: [PATCH] Add XBestISA vendor extension
+
+Adds 6 instructions in the custom-0 / custom-1 opcode space:
+  bestisa.clmulacc, bestisa.bfly                 (R-type, custom-0)
+  bestisa.andn3, .xor3, .maddw, .sha256ch        (R4-type, custom-1)
+
+This is the correctness oracle for the Agent-LE LLVM benchmark task
+"llvm_riscv_custom_ext_instance_1". DO NOT MODIFY.
+
+---
+ riscv/encoding.h           |  18 ++++++++++++++++++
+ riscv/insns/bestisa_andn3.h    |   1 +
+ riscv/insns/bestisa_xor3.h     |   1 +
+ riscv/insns/bestisa_maddw.h    |   3 +++
+ riscv/insns/bestisa_sha256ch.h |   1 +
+ riscv/insns/bestisa_clmulacc.h |   7 +++++++
+ riscv/insns/bestisa_bfly.h     |  35 +++++++++++++++++++++++++++++++++++
+ riscv/riscv.mk.in              |   6 ++++++
+ riscv/processor.cc             |   3 +++
+ disasm/disasm.cc               |  12 ++++++++++++
+ 10 files changed, 87 insertions(+)
+
+# ----------------------------------------------------------------------
+# This is a STUB patch file. The real patch is generated at task-package
+# time from the Spike checkout pinned in apply.sh. Each insns/*.h file
+# is a 1-3 line semantic implementation matching docs/XBestISA_spec.md §3.
+#
+# Example contents below for reference (NOT applied):
+# ----------------------------------------------------------------------
+
+# riscv/insns/bestisa_andn3.h:
+#   WRITE_RD(RS1 & ~RS2 & ~insn.rs3());
+
+# riscv/insns/bestisa_xor3.h:
+#   WRITE_RD(RS1 ^ RS2 ^ READ_REG(insn.rs3()));
+
+# riscv/insns/bestisa_maddw.h:
+#   sreg_t prod = sext32(sext32(RS2) * sext32(READ_REG(insn.rs3())));
+#   sreg_t sum  = sext32(sext32(RS1) + prod);
+#   WRITE_RD(sum);
+
+# riscv/insns/bestisa_sha256ch.h:
+#   reg_t e = RS1, f = RS2, g = READ_REG(insn.rs3());
+#   WRITE_RD((e & f) ^ (~e & g));
+
+# riscv/insns/bestisa_clmulacc.h:
+#   reg_t a = RS1, b = RS2, acc = READ_REG(insn.rd());
+#   reg_t r = 0;
+#   for (int i = 0; i < 64; ++i) if ((b >> i) & 1) r ^= (a << i);
+#   WRITE_RD(acc ^ r);
+
+# riscv/insns/bestisa_bfly.h:
+#   static const reg_t M[6] = {
+#     0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
+#     0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL, 0x00000000FFFFFFFFULL };
+#   reg_t a = RS1; uint32_t k = RS2 & 0x3F;
+#   if (k > 5) { WRITE_RD(a); break; }
+#   reg_t mask = M[k]; uint32_t s = 1u << k;
+#   reg_t hi = (a >> s) & mask, lo = a & mask;
+#   WRITE_RD((hi | (lo << s)) | (a & ~(mask | (mask << s))));
+
+# riscv/encoding.h: add MATCH_BESTISA_* and MASK_BESTISA_* macros.
+
+# riscv/riscv.mk.in: list the 6 new headers in riscv_insn_list.
+
+# riscv/processor.cc: add "xbestisa" to the supported isa string parser.
+
+# disasm/disasm.cc: register pretty-printer for each new mnemonic.

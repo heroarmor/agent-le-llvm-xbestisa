@@ -1,0 +1,10 @@
+# SHA-256 manifest for spike-patch/ — generated at task-package time.
+# Format: "<sha256>  <relpath>" (two spaces; coreutils sha256sum format).
+# Computed by `scripts/verify_oracle.sh` and compared against actual files.
+#
+# This file is REGENERATED at package time. The placeholders below are
+# overwritten with real hashes when the benchmark is released.
+
+0000000000000000000000000000000000000000000000000000000000000000  README.md
+0000000000000000000000000000000000000000000000000000000000000000  apply.sh
+0000000000000000000000000000000000000000000000000000000000000000  0001-add-xbestisa-extension.patch
