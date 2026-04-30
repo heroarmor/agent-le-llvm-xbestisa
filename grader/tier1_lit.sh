@@ -12,7 +12,6 @@ LLVM_MC="$LLVM_BUILD/bin/llvm-mc"
 LLC="$LLVM_BUILD/bin/llc"
 FILECHECK="$LLVM_BUILD/bin/FileCheck"
 LIT="$LLVM_BUILD/bin/llvm-lit"
-OBJDUMP="$LLVM_BUILD/bin/llvm-objdump"
 TMP="$WORK_DIR/grader-tmp/tier1"
 mkdir -p "$TMP"
 

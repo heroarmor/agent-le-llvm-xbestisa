@@ -50,7 +50,7 @@ fail_log="$TMP/failures.log"
 
 while read -r elf_a; do
     [[ -x "$elf_a" ]] || continue
-    rel="${elf_a#$TMP/build-agent/}"
+    rel="${elf_a#"$TMP"/build-agent/}"
     elf_r="$TMP/build-ref/$rel"
     [[ -x "$elf_r" ]] || continue
     total=$((total+1))
