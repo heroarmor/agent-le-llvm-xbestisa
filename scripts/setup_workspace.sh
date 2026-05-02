@@ -22,10 +22,13 @@ sudo apt-get install -y --no-install-recommends \
     libgmp-dev libmpfr-dev libmpc-dev \
     autoconf automake libtool device-tree-compiler
 
-echo "[setup] cloning LLVM ${LLVM_TAG}..."
+echo "[setup] cloning LLVM ${LLVM_TAG} (commit ${LLVM_COMMIT:0:12})..."
 [[ -d "$WORK_DIR/llvm-project" ]] \
     || git clone --depth 1 --branch "$LLVM_TAG" \
         https://github.com/llvm/llvm-project.git "$WORK_DIR/llvm-project"
+ACTUAL_LLVM_SHA="$(git -C "$WORK_DIR/llvm-project" rev-parse HEAD)"
+[[ "$ACTUAL_LLVM_SHA" == "$LLVM_COMMIT" ]] \
+    || echo "[setup] WARN: LLVM SHA mismatch (got $ACTUAL_LLVM_SHA, expected $LLVM_COMMIT)"
 
 echo "[setup] configuring LLVM build..."
 cmake -G Ninja -S "$WORK_DIR/llvm-project/llvm" -B "$WORK_DIR/llvm-project/build" \
