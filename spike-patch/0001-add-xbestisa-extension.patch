@@ -1,71 +1,138 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Agent-LE Task Author <agent-le@example.org>
-Date: Thu, 1 Jan 2026 00:00:00 +0000
-Subject: [PATCH] Add XBestISA vendor extension
-
-Adds 6 instructions in the custom-0 / custom-1 opcode space:
-  bestisa.clmulacc, bestisa.bfly                 (R-type, custom-0)
-  bestisa.andn3, .xor3, .maddw, .sha256ch        (R4-type, custom-1)
-
-This is the correctness oracle for the Agent-LE LLVM benchmark task
-"llvm_riscv_custom_ext_instance_1". DO NOT MODIFY.
-
----
- riscv/encoding.h           |  18 ++++++++++++++++++
- riscv/insns/bestisa_andn3.h    |   1 +
- riscv/insns/bestisa_xor3.h     |   1 +
- riscv/insns/bestisa_maddw.h    |   3 +++
- riscv/insns/bestisa_sha256ch.h |   1 +
- riscv/insns/bestisa_clmulacc.h |   7 +++++++
- riscv/insns/bestisa_bfly.h     |  35 +++++++++++++++++++++++++++++++++++
- riscv/riscv.mk.in              |   6 ++++++
- riscv/processor.cc             |   3 +++
- disasm/disasm.cc               |  12 ++++++++++++
- 10 files changed, 87 insertions(+)
-
-# ----------------------------------------------------------------------
-# This is a STUB patch file. The real patch is generated at task-package
-# time from the Spike checkout pinned in apply.sh. Each insns/*.h file
-# is a 1-3 line semantic implementation matching docs/XBestISA_spec.md §3.
-#
-# Example contents below for reference (NOT applied):
-# ----------------------------------------------------------------------
-
-# riscv/insns/bestisa_andn3.h:
-#   WRITE_RD(RS1 & ~RS2 & ~insn.rs3());
-
-# riscv/insns/bestisa_xor3.h:
-#   WRITE_RD(RS1 ^ RS2 ^ READ_REG(insn.rs3()));
-
-# riscv/insns/bestisa_maddw.h:
-#   sreg_t prod = sext32(sext32(RS2) * sext32(READ_REG(insn.rs3())));
-#   sreg_t sum  = sext32(sext32(RS1) + prod);
-#   WRITE_RD(sum);
-
-# riscv/insns/bestisa_sha256ch.h:
-#   reg_t e = RS1, f = RS2, g = READ_REG(insn.rs3());
-#   WRITE_RD((e & f) ^ (~e & g));
-
-# riscv/insns/bestisa_clmulacc.h:
-#   reg_t a = RS1, b = RS2, acc = READ_REG(insn.rd());
-#   reg_t r = 0;
-#   for (int i = 0; i < 64; ++i) if ((b >> i) & 1) r ^= (a << i);
-#   WRITE_RD(acc ^ r);
-
-# riscv/insns/bestisa_bfly.h:
-#   static const reg_t M[6] = {
-#     0x5555555555555555ULL, 0x3333333333333333ULL, 0x0F0F0F0F0F0F0F0FULL,
-#     0x00FF00FF00FF00FFULL, 0x0000FFFF0000FFFFULL, 0x00000000FFFFFFFFULL };
-#   reg_t a = RS1; uint32_t k = RS2 & 0x3F;
-#   if (k > 5) { WRITE_RD(a); break; }
-#   reg_t mask = M[k]; uint32_t s = 1u << k;
-#   reg_t hi = (a >> s) & mask, lo = a & mask;
-#   WRITE_RD((hi | (lo << s)) | (a & ~(mask | (mask << s))));
-
-# riscv/encoding.h: add MATCH_BESTISA_* and MASK_BESTISA_* macros.
-
-# riscv/riscv.mk.in: list the 6 new headers in riscv_insn_list.
-
-# riscv/processor.cc: add "xbestisa" to the supported isa string parser.
-
-# disasm/disasm.cc: register pretty-printer for each new mnemonic.
+diff --git a/disasm/isa_parser.cc b/disasm/isa_parser.cc
+index 4f48e5f..b4feb59 100644
+--- a/disasm/isa_parser.cc
++++ b/disasm/isa_parser.cc
+@@ -405,6 +405,10 @@ void isa_parser_t::add_extension(const std::string& ext_str, const char* str)
+     extension_table[EXT_SSAIA] = true;
+     extension_table[EXT_SSCSRIND] = true;
+   } else if (ext_str == "svvptc") {
++  } else if (ext_str == "xbestisa") {
++    // XBestISA is built into core Spike via DECLARE_INSN; no
++    // shared-library plugin is needed.
++    extension_table['X'] = true;
+   } else if (ext_str[0] == 'x') {
+     extension_table['X'] = true;
+     if (ext_str.size() == 1) {
+diff --git a/riscv/encoding.h b/riscv/encoding.h
+index 5203544..56053eb 100644
+--- a/riscv/encoding.h
++++ b/riscv/encoding.h
+@@ -2556,6 +2556,22 @@
+ #define MATCH_ZIP 0x8f01013
+ #define MASK_ZIP 0xfff0707f
+ 
++/* === XBestISA (custom-0 / 0x0B) === */
++#define MATCH_BESTISA_SHA256CH  0x0000000b   /* funct2=00 funct3=000 */
++#define MASK_BESTISA_SHA256CH   0x0600707f
++#define MATCH_BESTISA_MAC       0x0000100b   /* funct2=00 funct3=001 */
++#define MASK_BESTISA_MAC        0x0600707f
++#define MATCH_BESTISA_XOR3      0x0000200b   /* funct2=00 funct3=010 */
++#define MASK_BESTISA_XOR3       0x0600707f
++#define MATCH_BESTISA_OR3       0x0000300b   /* funct2=00 funct3=011 */
++#define MASK_BESTISA_OR3        0x0600707f
++#define MATCH_BESTISA_SHA256MAJ 0x0200000b   /* funct2=01 funct3=000 */
++#define MASK_BESTISA_SHA256MAJ  0x0600707f
++#define MATCH_BESTISA_ADD3      0x0400000b   /* funct2=10 funct3=000 */
++#define MASK_BESTISA_ADD3       0x0600707f
++#define MATCH_BESTISA_LW        0x0000200b   /* funct7=0000000 funct3=010 */
++#define MASK_BESTISA_LW         0xfe00707f
++
+ #define CSR_FFLAGS 0x1
+ #define CSR_FRM 0x2
+ #define CSR_FCSR 0x3
+@@ -4139,6 +4155,15 @@ DECLARE_INSN(xperm32, MATCH_XPERM32, MASK_XPERM32)
+ DECLARE_INSN(xperm4, MATCH_XPERM4, MASK_XPERM4)
+ DECLARE_INSN(xperm8, MATCH_XPERM8, MASK_XPERM8)
+ DECLARE_INSN(zip, MATCH_ZIP, MASK_ZIP)
++
++/* === XBestISA (custom-0 / 0x0B) === */
++DECLARE_INSN(bestisa_lw,        MATCH_BESTISA_LW,        MASK_BESTISA_LW)
++DECLARE_INSN(bestisa_sha256ch,  MATCH_BESTISA_SHA256CH,  MASK_BESTISA_SHA256CH)
++DECLARE_INSN(bestisa_mac,       MATCH_BESTISA_MAC,       MASK_BESTISA_MAC)
++DECLARE_INSN(bestisa_xor3,      MATCH_BESTISA_XOR3,      MASK_BESTISA_XOR3)
++DECLARE_INSN(bestisa_or3,       MATCH_BESTISA_OR3,       MASK_BESTISA_OR3)
++DECLARE_INSN(bestisa_sha256maj, MATCH_BESTISA_SHA256MAJ, MASK_BESTISA_SHA256MAJ)
++DECLARE_INSN(bestisa_add3,      MATCH_BESTISA_ADD3,      MASK_BESTISA_ADD3)
+ #endif
+ #ifdef DECLARE_CSR
+ DECLARE_CSR(fflags, CSR_FFLAGS)
+diff --git a/riscv/insns/bestisa_add3.h b/riscv/insns/bestisa_add3.h
+new file mode 100644
+index 0000000..84e2909
+--- /dev/null
++++ b/riscv/insns/bestisa_add3.h
+@@ -0,0 +1 @@
++WRITE_RD(sext_xlen(RS1 + RS2 + READ_REG(insn.rs3())));
+diff --git a/riscv/insns/bestisa_lw.h b/riscv/insns/bestisa_lw.h
+new file mode 100644
+index 0000000..fef38b3
+--- /dev/null
++++ b/riscv/insns/bestisa_lw.h
+@@ -0,0 +1 @@
++WRITE_RD(MMU.load<int32_t>(RS1 + RS2));
+diff --git a/riscv/insns/bestisa_mac.h b/riscv/insns/bestisa_mac.h
+new file mode 100644
+index 0000000..9611760
+--- /dev/null
++++ b/riscv/insns/bestisa_mac.h
+@@ -0,0 +1 @@
++WRITE_RD(sext_xlen((sreg_t)RS1 * (sreg_t)RS2 + (sreg_t)READ_REG(insn.rs3())));
+diff --git a/riscv/insns/bestisa_or3.h b/riscv/insns/bestisa_or3.h
+new file mode 100644
+index 0000000..5eafa95
+--- /dev/null
++++ b/riscv/insns/bestisa_or3.h
+@@ -0,0 +1 @@
++WRITE_RD(RS1 | RS2 | READ_REG(insn.rs3()));
+diff --git a/riscv/insns/bestisa_sha256ch.h b/riscv/insns/bestisa_sha256ch.h
+new file mode 100644
+index 0000000..024b885
+--- /dev/null
++++ b/riscv/insns/bestisa_sha256ch.h
+@@ -0,0 +1,2 @@
++reg_t e = RS1, f = RS2, g = READ_REG(insn.rs3());
++WRITE_RD((e & f) ^ (~e & g));
+diff --git a/riscv/insns/bestisa_sha256maj.h b/riscv/insns/bestisa_sha256maj.h
+new file mode 100644
+index 0000000..367c088
+--- /dev/null
++++ b/riscv/insns/bestisa_sha256maj.h
+@@ -0,0 +1,2 @@
++reg_t a = RS1, b = RS2, c = READ_REG(insn.rs3());
++WRITE_RD((a & b) ^ (a & c) ^ (b & c));
+diff --git a/riscv/insns/bestisa_xor3.h b/riscv/insns/bestisa_xor3.h
+new file mode 100644
+index 0000000..154bb68
+--- /dev/null
++++ b/riscv/insns/bestisa_xor3.h
+@@ -0,0 +1 @@
++WRITE_RD(RS1 ^ RS2 ^ READ_REG(insn.rs3()));
+diff --git a/riscv/riscv.mk.in b/riscv/riscv.mk.in
+index a996b88..73bf805 100644
+--- a/riscv/riscv.mk.in
++++ b/riscv/riscv.mk.in
+@@ -1150,6 +1150,16 @@ riscv_insn_ext_zvzip = \
+ 	vpaire_vv \
+ 	vpairo_vv \
+ 
++
++riscv_insn_ext_xbestisa = \
++	bestisa_add3 \
++	bestisa_xor3 \
++	bestisa_or3 \
++	bestisa_sha256ch \
++	bestisa_sha256maj \
++	bestisa_mac \
++	bestisa_lw \
++
+ riscv_insn_list = \
+ 	$(riscv_insn_ext_i) \
+ 	$(riscv_insn_ext_c) \
+@@ -1173,6 +1183,7 @@ riscv_insn_list = \
+ 	$(riscv_insn_ext_zabha) \
+ 	$(riscv_insn_ext_zawrs) \
+ 	$(riscv_insn_ext_zalasr) \
++	$(riscv_insn_ext_xbestisa) \
+ 	$(riscv_insn_ext_zce) \
+ 	$(riscv_insn_ext_zfh) \
+ 	$(riscv_insn_ext_zfh_zfa) \

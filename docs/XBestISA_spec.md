@@ -1,32 +1,36 @@
 # `XBestISA` — RISC-V Vendor Extension Specification
 
-**Version:** 1.0
+**Version:** 1.1 (matches the verified reference implementation at `reference-solution/solution.patch`)
 **Status:** Frozen for Agent-LE benchmark
-**Base ISA:** RV64GC
-**Encoding space:** `custom-0` (`0001011`) for R-type, `custom-1` (`0101011`) for R4-type
+**Base ISA:** RV64IMAC
+**Encoding space:** `custom-0` (`0001011`) for both R-type (2-source) and R4-type (3-source)
 **`-march` token:** `xbestisa`
-**Pipeline:** 3-cycle latency, single issue port `M`, no exceptions
+**Pipeline:** non-faulting, no exceptions, no CSR side-effects
+**Provenance:** Derived from the user's pre-existing `Best_ISA` accelerator project (see `reference-solution/walkthrough.md` §1).
 
 ---
 
 ## 1. Overview
 
-`XBestISA` is a small fixed-function vendor extension consisting of **6 instructions** that fuse common 3-source bit-manipulation, multiply-accumulate, and crypto primitives into single ops. All instructions are register-only (no immediates), produce a single GPR result, and are non-faulting.
+`XBestISA` is a small fixed-function vendor extension consisting of **7 instructions** that fuse common 3-source bit-manipulation, 3-source addition, multiply-accumulate, crypto compression primitives (SHA-256 `Ch` / `Maj`), and a register+register memory load into single ops. All instructions write a single GPR result.
 
 | # | Mnemonic | Format | Funct | Semantics (one-line) |
 |---|---|---|---|---|
-| 1 | `bestisa.clmulacc rd, rs1, rs2`           | R  | f3=`000` f7=`0000000` | `rd = rd ^ clmul(rs1, rs2)` (rd is also source) |
-| 2 | `bestisa.bfly rd, rs1, rs2`               | R  | f3=`000` f7=`0000001` | bit-butterfly permutation of `rs1` controlled by `rs2` |
-| 3 | `bestisa.andn3 rd, rs1, rs2, rs3`         | R4 | f3=`000` f2=`00`      | `rd = rs1 & ~rs2 & ~rs3` |
-| 4 | `bestisa.xor3 rd, rs1, rs2, rs3`          | R4 | f3=`000` f2=`01`      | `rd = rs1 ^ rs2 ^ rs3` |
-| 5 | `bestisa.maddw rd, rs1, rs2, rs3`         | R4 | f3=`000` f2=`10`      | `rd = sext32(rs1[31:0] + rs2[31:0] * rs3[31:0])` |
-| 6 | `bestisa.sha256ch rd, rs1, rs2, rs3`      | R4 | f3=`000` f2=`11`      | `rd = (rs1 & rs2) ^ (~rs1 & rs3)` |
+| 1 | `bestisa.add3 rd, rs1, rs2, rs3`         | R4 | f3=`000` f2=`10`     | `rd = sext_xlen(rs1 + rs2 + rs3)` |
+| 2 | `bestisa.xor3 rd, rs1, rs2, rs3`         | R4 | f3=`010` f2=`00`     | `rd = rs1 ^ rs2 ^ rs3` |
+| 3 | `bestisa.or3  rd, rs1, rs2, rs3`         | R4 | f3=`011` f2=`00`     | `rd = rs1 \| rs2 \| rs3` |
+| 4 | `bestisa.sha256ch rd, rs1, rs2, rs3`     | R4 | f3=`000` f2=`00`     | `rd = (rs1 & rs2) ^ (~rs1 & rs3)` |
+| 5 | `bestisa.sha256maj rd, rs1, rs2, rs3`    | R4 | f3=`000` f2=`01`     | `rd = (rs1 & rs2) ^ (rs1 & rs3) ^ (rs2 & rs3)` |
+| 6 | `bestisa.mac rd, rs1, rs2, rs3`          | R4 | f3=`001` f2=`00`     | `rd = sext_xlen(rs1 * rs2 + rs3)` |
+| 7 | `bestisa.lw  rd, rs1, rs2`               | R  | f3=`010` f7=`0000000`| `rd = MMU.load_int32(rs1 + rs2)` (sign-extended) |
 
 ---
 
 ## 2. Encoding
 
-### 2.1 R-type (instructions 1–2): opcode `custom-0` = `0001011`
+Both formats live in the `custom-0` opcode space (`0001011`). The decoder distinguishes R-type from R4-type by `funct3`: `010` with `funct7=0000000` is the R-type `bestisa.lw`; all other observed `funct3` values are R4-type. (This means a hypothetical R4 instruction with `rs3=0` and `funct2=00` and `funct3=010` would be ambiguous with `bestisa.lw`; the implementation orders the decoder's MATCH/MASK table such that `bestisa.lw`'s R-type pattern wins for that specific encoding.)
+
+### 2.1 R-type (instruction 7)
 
 ```
  31      25 24    20 19    15 14   12 11     7 6      0
@@ -36,7 +40,7 @@
    7         5         5        3       5         7
 ```
 
-### 2.2 R4-type (instructions 3–6): opcode `custom-1` = `0101011`
+### 2.2 R4-type (instructions 1–6)
 
 ```
  31    27 26 25 24    20 19    15 14   12 11     7 6      0
@@ -46,172 +50,121 @@
    5       2     5         5        3       5         7
 ```
 
-### 2.3 Per-instruction encoding table
+### 2.3 Per-instruction MATCH / MASK (used by Spike's decoder)
 
-| Mnemonic        | bits[31:25] | bits[24:20] | bits[19:15] | bits[14:12] | bits[11:7] | bits[6:0] |
-|-----------------|-------------|-------------|-------------|-------------|------------|-----------|
-| `clmulacc`      | `0000000`   | rs2         | rs1         | `000`       | rd         | `0001011` |
-| `bfly`          | `0000001`   | rs2         | rs1         | `000`       | rd         | `0001011` |
-| `andn3`         | rs3‖`00`    | rs2         | rs1         | `000`       | rd         | `0101011` |
-| `xor3`          | rs3‖`01`    | rs2         | rs1         | `000`       | rd         | `0101011` |
-| `maddw`         | rs3‖`10`    | rs2         | rs1         | `000`       | rd         | `0101011` |
-| `sha256ch`      | rs3‖`11`    | rs2         | rs1         | `000`       | rd         | `0101011` |
+| Mnemonic        | bits[31:25] (encoding pattern; `r` = register field) | MATCH      | MASK       |
+|-----------------|------------------------------------------------------|------------|------------|
+| `bestisa.lw`        | `0000000` r r `010` r `0001011`                  | `0x0000200b` | `0xfe00707f` |
+| `bestisa.sha256ch`  | rs3 `00` r r `000` r `0001011`                   | `0x0000000b` | `0x0600707f` |
+| `bestisa.mac`       | rs3 `00` r r `001` r `0001011`                   | `0x0000100b` | `0x0600707f` |
+| `bestisa.xor3`      | rs3 `00` r r `010` r `0001011`                   | `0x0000200b` | `0x0600707f` |
+| `bestisa.or3`       | rs3 `00` r r `011` r `0001011`                   | `0x0000300b` | `0x0600707f` |
+| `bestisa.sha256maj` | rs3 `01` r r `000` r `0001011`                   | `0x0200000b` | `0x0600707f` |
+| `bestisa.add3`      | rs3 `10` r r `000` r `0001011`                   | `0x0400000b` | `0x0600707f` |
 
-(For R4 rows, `bits[31:27]=rs3`, `bits[26:25]=funct2`.)
+### 2.4 Worked encoding examples (verified by `llvm-mc -show-encoding`)
 
-### 2.4 Worked encoding examples (for MC-test golden hex)
+| Asm                                              | Hex (little-endian) |
+|--------------------------------------------------|---------------------|
+| `bestisa.add3 a0, a1, a2, a3`                    | `0x0b 0x85 0xc5 0x6c` |
+| `bestisa.xor3 t0, t1, t2, t3`                    | `0x8b 0x22 0x73 0xe0` |
+| `bestisa.or3  s0, s1, s2, s3`                    | `0x0b 0xb4 0x24 0x99` |
+| `bestisa.sha256ch a0, a1, a2, a3`                | `0x0b 0x85 0xc5 0x68` |
+| `bestisa.sha256maj a0, a1, a2, a3`               | `0x0b 0x85 0xc5 0x6a` |
+| `bestisa.mac a0, a1, a2, a3`                     | `0x0b 0x95 0xc5 0x68` |
+| `bestisa.lw  a0, a1, a2`                         | `0x0b 0xa5 0xc5 0x00` |
 
-| Asm                                        | Hex (little-endian) | Binary (MSB→LSB) |
-|--------------------------------------------|---------------------|------------------|
-| `bestisa.clmulacc x10, x11, x12`           | `0x00c5850b`        | `0000000 01100 01011 000 01010 0001011` |
-| `bestisa.bfly x5, x6, x7`                  | `0x0273028b`        | `0000001 00111 00110 000 00101 0001011` |
-| `bestisa.andn3 x1, x2, x3, x4`             | `0x2031010b` ... see harness | `00100 00 00011 00010 000 00001 0101011` |
-| `bestisa.xor3 x1, x2, x3, x4`              | (computed in harness) | `00100 01 00011 00010 000 00001 0101011` |
-| `bestisa.maddw x1, x2, x3, x4`             | (computed in harness) | `00100 10 00011 00010 000 00001 0101011` |
-| `bestisa.sha256ch x1, x2, x3, x4`          | (computed in harness) | `00100 11 00011 00010 000 00001 0101011` |
-
-> Authoritative encodings for the full register cross-product are computed by `tests/mc/valid/*.expected` files at grade time.
+These hex values are reproducible: see `tests/mc/valid/` and run `llvm-mc -triple=riscv64 -mattr=+xbestisa -show-encoding`.
 
 ---
 
 ## 3. Semantics (executable pseudocode)
 
-Let `XLEN = 64`. All operations write `rd ≠ x0`; writes to `x0` are silently discarded (RISC-V convention).
+`XLEN = 64`. All operations write `rd ≠ x0`; writes to `x0` are silently discarded (RISC-V convention). All operations are non-faulting (no traps).
 
-### 3.1 `bestisa.clmulacc rd, rs1, rs2`
+### 3.1 `bestisa.add3 rd, rs1, rs2, rs3`
 ```
-clmul(a, b):
-    result = 0
-    for i in 0..XLEN-1:
-        if (b >> i) & 1: result ^= (a << i) & ((1 << XLEN) - 1)
-    return result
-
-X[rd] = X[rd] ^ clmul(X[rs1], X[rs2])
-```
-Note: `rd` is **both source and destination** (accumulator). Latency 3, throughput 1.
-
-### 3.2 `bestisa.bfly rd, rs1, rs2`
-```
-# Butterfly stage; rs2[5:0] selects stage k (0..5), rs2[63:6] ignored.
-k = X[rs2] & 0x3F
-if k > 5: X[rd] = X[rs1]; return       # no-op for k>=6
-mask = stage_masks[k]                   # see table below
-shift = 1 << k
-a = X[rs1]
-hi = (a >> shift) & mask
-lo = a & mask
-X[rd] = (hi | (lo << shift)) | (a & ~(mask | (mask << shift)))
-```
-where:
-| k | `stage_masks[k]` (hex)              |
-|---|--------------------------------------|
-| 0 | `0x5555555555555555`                 |
-| 1 | `0x3333333333333333`                 |
-| 2 | `0x0F0F0F0F0F0F0F0F`                 |
-| 3 | `0x00FF00FF00FF00FF`                 |
-| 4 | `0x0000FFFF0000FFFF`                 |
-| 5 | `0x00000000FFFFFFFF`                 |
-
-### 3.3 `bestisa.andn3 rd, rs1, rs2, rs3`
-```
-X[rd] = X[rs1] & ~X[rs2] & ~X[rs3]
+X[rd] = sext_xlen(X[rs1] + X[rs2] + X[rs3])
 ```
 
-### 3.4 `bestisa.xor3 rd, rs1, rs2, rs3`
+### 3.2 `bestisa.xor3 rd, rs1, rs2, rs3`
 ```
 X[rd] = X[rs1] ^ X[rs2] ^ X[rs3]
 ```
 
-### 3.5 `bestisa.maddw rd, rs1, rs2, rs3`
+### 3.3 `bestisa.or3 rd, rs1, rs2, rs3`
 ```
-lo32(x): return x & 0xFFFFFFFF
-sext32_to_64(x): return ((int64_t)((int32_t)(x & 0xFFFFFFFF)))
-
-prod32 = lo32(lo32(X[rs2]) * lo32(X[rs3]))    # truncate to 32b
-sum32  = lo32(lo32(X[rs1]) + prod32)
-X[rd]  = sext32_to_64(sum32)
+X[rd] = X[rs1] | X[rs2] | X[rs3]
 ```
 
-### 3.6 `bestisa.sha256ch rd, rs1, rs2, rs3`
+### 3.4 `bestisa.sha256ch rd, rs1, rs2, rs3`
 ```
-X[rd] = (X[rs1] & X[rs2]) ^ (~X[rs1] & X[rs3])
+X[rd] = (X[rs1] & X[rs2]) ^ (~X[rs1] & X[rs3])     # SHA-256 Ch on full 64-bit operands
 ```
-(Standard SHA-256 `Ch` function, applied to full 64-bit operands.)
+
+### 3.5 `bestisa.sha256maj rd, rs1, rs2, rs3`
+```
+X[rd] = (X[rs1] & X[rs2]) ^ (X[rs1] & X[rs3]) ^ (X[rs2] & X[rs3])    # SHA-256 Maj
+```
+
+### 3.6 `bestisa.mac rd, rs1, rs2, rs3`
+```
+X[rd] = sext_xlen((sreg_t)X[rs1] * (sreg_t)X[rs2] + (sreg_t)X[rs3])
+```
+(Signed 64-bit fused multiply-add; result truncated and sign-extended back to XLEN.)
+
+### 3.7 `bestisa.lw rd, rs1, rs2`
+```
+X[rd] = sext32_to_64(MMU.load_int32(X[rs1] + X[rs2]))
+```
+Standard 32-bit signed load with register+register addressing; sign-extends to XLEN.
 
 ---
 
-## 4. Pipeline / scheduling
+## 4. Subtarget feature
 
-| Property         | Value           |
-|------------------|-----------------|
-| Latency          | **3 cycles**    |
-| Throughput       | 1 per cycle     |
-| Issue port       | `M` (single)    |
-| Pipeline class   | `IIC_BestISA`   |
-| In-order on `MISched` | yes        |
-| WAW / RAW hazards | standard       |
-
-LLVM scheduling itinerary entries must be added to:
-- `llvm/lib/Target/RISCV/RISCVSchedRocket.td` — class `IIC_BestISA`, mapped to `RocketUnitsItinM`, latency 3.
-- `llvm/lib/Target/RISCV/RISCVSchedSiFive7.td` — class `IIC_BestISA`, mapped to `SiFive7M`, latency 3.
+| Property                    | Value                        |
+|-----------------------------|------------------------------|
+| Internal feature name       | `FeatureVendorBestISA`       |
+| `-mattr=` / `-march=` token | `xbestisa`                   |
+| Predicate                   | `HasVendorBestISA`           |
+| AssemblerPredicate          | `AssemblerPredicate<(all_of FeatureVendorBestISA), "'XBestISA' (Best_ISA Custom Compound Instructions)">` |
+| Implies                     | none                         |
+| ELF attribute               | `Tag_RISCV_arch` substring `_xbestisa1p0` |
 
 ---
 
-## 5. Subtarget feature
+## 5. ISel pattern guidance (proven to fire in the reference solution)
 
-| Property                  | Value                        |
-|---------------------------|------------------------------|
-| Internal feature name     | `FeatureVendorXBestISA`      |
-| `-mattr=` / `-march=` token | `xbestisa`                 |
-| Predicate                 | `HasVendorXBestISA`          |
-| AssemblerPredicate        | `AssemblerPredicate<(all_of FeatureVendorXBestISA), "'xbestisa' (XBestISA Vendor Extension)">` |
-| Implies                   | none                         |
-| ELF attribute             | `Tag_RISCV_arch` substring `_xbestisa1p0` |
+The reference solution's `Pat<>` records select these instructions from idiomatic IR:
 
----
+| Instruction       | IR pattern (canonical after combiner) | Verified |
+|-------------------|---------------------------------------|----------|
+| `add3`            | `(add (add a, b), c)` and commutations | ✓ |
+| `xor3`            | `(xor (xor a, b), c)` and commutations | ✓ |
+| `or3`             | `(or (or a, b), c)` and commutations   | ✓ |
+| `sha256ch`        | 8 commutative variants of `(x & y) ^ (~x & z)` (covers `xor`, `or` after disjoint-or fold, and the alternate `z ^ (x & (y ^ z))` form) | ✓ |
+| `sha256maj`       | 4 variants of `(x & y) | (z & (x ^ y))` (canonical for SHA-256 Maj) | ✓ |
+| `lw`              | `(i32 (load (add rs1, rs2)))` | ✓ |
+| `mac`             | not pattern-matched (DISABLED in the reference; would need multiplier pipeline scheduling) — only reachable via assembler / future intrinsic | n/a |
 
-## 6. Clang builtins
-
-| Builtin                                              | Signature                                              | Maps to intrinsic                  |
-|------------------------------------------------------|--------------------------------------------------------|------------------------------------|
-| `__builtin_riscv_bestisa_clmulacc(acc, a, b)`        | `(uint64_t, uint64_t, uint64_t) -> uint64_t`           | `llvm.riscv.bestisa.clmulacc`      |
-| `__builtin_riscv_bestisa_bfly(a, sel)`               | `(uint64_t, uint64_t) -> uint64_t`                     | `llvm.riscv.bestisa.bfly`          |
-| `__builtin_riscv_bestisa_andn3(a, b, c)`             | `(uint64_t, uint64_t, uint64_t) -> uint64_t`           | `llvm.riscv.bestisa.andn3`         |
-| `__builtin_riscv_bestisa_xor3(a, b, c)`              | `(uint64_t, uint64_t, uint64_t) -> uint64_t`           | `llvm.riscv.bestisa.xor3`          |
-| `__builtin_riscv_bestisa_maddw(a, b, c)`             | `(int32_t, int32_t, int32_t) -> int32_t` (sext to i64) | `llvm.riscv.bestisa.maddw`         |
-| `__builtin_riscv_bestisa_sha256ch(e, f, g)`          | `(uint64_t, uint64_t, uint64_t) -> uint64_t`           | `llvm.riscv.bestisa.sha256ch`      |
-
-All builtins are gated by `TargetGuard<"xbestisa">`.
+The `sha256ch` and `sha256maj` patterns require **multiple commuted variants** because LLVM's Combine pass canonicalizes the IR in ways that depend on operand value-tracking. The reference solution ships 8+4 variants (see `reference-solution/walkthrough.md` §3 for why each is needed).
 
 ---
 
-## 7. ISel pattern guidance
-
-The agent must select these instructions from idiomatic IR. Suggested matchers (non-exhaustive):
-
-| Instruction   | IR pattern (canonical after combiner) |
-|---------------|---------------------------------------|
-| `andn3`       | `(and (and a, (xor b, -1)), (xor c, -1))` and commutative equivalents; also via the explicit builtin |
-| `xor3`        | `(xor (xor a, b), c)` and all associativity equivalents |
-| `maddw`       | `(sext_inreg (add a, (mul b, c)), i32)` over i64; or `(add a32, (mul b32, c32))` returning i32 sext'd |
-| `sha256ch`    | `(xor (and e, f), (and (xor e, -1), g))` |
-| `clmulacc`    | only via builtin/intrinsic (no canonical scalar IR pattern) |
-| `bfly`        | only via builtin/intrinsic |
-
-The 10 codegen snippets in `tests/codegen/` are the load-bearing oracle for ISel quality.
-
----
-
-## 8. Out of scope
+## 6. Out of scope
 
 - 32-bit (RV32) variants — RV64-only.
-- Compressed encodings (`C` extension) — none.
+- Compressed encodings (`C` extension prefix) — none.
 - Vector (`V` / RVV) interaction — none.
 - FP / privileged / CSR effects — none.
-- Memory ordering — none (all 6 are register-only).
+- Memory ordering — `bestisa.lw` is a plain load with the same memory model semantics as `lw`.
 
 ---
 
-## 9. Versioning
+## 7. Versioning history
 
-This is `XBestISA` v1.0. Any future extension version (`xbestisa1p1`, etc.) is out of scope for this benchmark task.
+- **v1.0** (initial draft, sealed in agent-le-llvm-xbestisa@8260233): 6 instructions — `andn3`, `xor3`, `maddw`, `clmulacc`, `bfly`, `sha256ch`. Spec-only; no working implementation.
+- **v1.1** (this version, sealed in `reference-solution/solution.patch`): 7 instructions — `add3`, `xor3`, `or3`, `sha256ch`, `sha256maj`, `mac`, `lw_rr`. Verified working: solution.patch + spike-patch produce byte-exact identical stdout to baseline on the e2e test (see `reference-solution/E2E_LOG.txt`).
+
+The v1.1 instruction set was chosen to match a real, working accelerator the user has in development. The selection is representative of the kind of instructions silicon vendors actually upstream (compare to T-Head `XTHeadMac` / `XTHeadBb` and OpenHW `XCVbitmanip`).

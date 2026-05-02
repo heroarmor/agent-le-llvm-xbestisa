@@ -11,7 +11,7 @@ Add **complete LLVM backend support** for a 6-instruction RISC-V vendor extensio
 
 ## Starting state (provided in `/work/`)
 
-- **`llvm-project/`** — pinned to `llvmorg-22.1.0`, pre-built into `build/` with warm `ccache` (~60 s incremental builds for the RISCV target).
+- **`llvm-project/`** — pinned to `llvmorg-18.1.3`, pre-built into `build/` with warm `ccache` (~60 s incremental builds for the RISCV target).
 - **`spike/`** — pre-built `riscv-isa-sim` binary that **already implements** the six `XBestISA` instructions in `riscv/insns/bestisa_*.h` and `riscv/encoding.h`. **This is the correctness oracle. You MUST NOT modify it.** A SHA-256 of the oracle binary is verified at the start of each `grade.sh` run.
 - **`docs/XBestISA_spec.md`** — the ISA specification: mnemonics, R/R4 encoding bit-layouts, pseudocode semantics, pipeline latency. **This is your only requirements document.**
 - **`llvm-test-suite/`** — checked out at the matching tag, configured for `riscv64-unknown-elf` cross-compilation.
@@ -68,7 +68,7 @@ End-to-end LLVM support, touching every layer:
 - The 6 instructions must be selected **from natural C** (Tier 3a), not only reachable via the intrinsic.
 - No regression in any pre-existing lit test (Tier 1 + Tier 3b).
 - Total wall-clock budget: **24 hours**.
-- Final deliverable: a clean `git diff` against `llvmorg-22.1.0` plus a passing `scorecard.json` produced by `grade.sh`.
+- Final deliverable: a clean `git diff` against `llvmorg-18.1.3` plus a passing `scorecard.json` produced by `grade.sh`.
 
 ## Iteration loop
 

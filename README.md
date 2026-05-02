@@ -2,15 +2,16 @@
 
 > **Task short name:** `llvm_riscv_custom_ext_instance_1`
 > **Industry domain:** Compiler Engineering / Computer Architecture
-> **Software:** LLVM 22.1.0, Clang 22, riscv-isa-sim (Spike), llvm-test-suite
+> **Software:** LLVM 18.1.3, Clang 18, riscv-isa-sim (Spike), llvm-test-suite
 > **OS:** Linux (Ubuntu 24.04, x86_64 host with riscv64-unknown-elf cross toolchain)
 > **Licensing:** Free / Open Source (Apache 2.0 with LLVM Exceptions, BSD)
-> **Estimated expert time:** 2–4 days (experienced LLVM backend engineer)
+> **Estimated expert time:** 1.5–2 days (experienced LLVM backend engineer; see `reference-solution/walkthrough.md` §5)
 > **Agent wall-clock budget:** 24 hours
+> **Reference solution status:** ✅ **Real & verified end-to-end as of 2026-05-01** — see `reference-solution/E2E_LOG.txt` for the actual build + Spike-execution proof.
 
 ## What this task asks
 
-Add **complete LLVM backend support** for a 6-instruction RISC-V vendor extension named `XBestISA` so that:
+Add **complete LLVM backend support** for a 7-instruction RISC-V vendor extension named `XBestISA` so that:
 
 1. `clang -march=rv64gc_xbestisa` compiles natural C source and emits the new instructions via instruction selection.
 2. The new instructions assemble, disassemble, and round-trip bit-exactly through the MC layer.
@@ -85,6 +86,28 @@ Full rubric: [`docs/grading_rubric.md`](docs/grading_rubric.md).
 - **Verifiable** — every tier is deterministic. Two runs of `grade.sh` on the same submission produce identical scores. No subjective rubric items.
 - **Uncovered niche** — `llvm-bench` / `llvm-autofix` (arXiv:2603.20075) cover middle-end LLVM bugs; SWE-bench has only Clang frontend issues. No existing benchmark covers backend extension work.
 - **Hard for current agents** — TableGen DSL idiosyncrasies + multi-pass codegen + 60 s build cycles + the "tests pass but instruction not selected" silent-failure trap. Frontier models drop ~62% in pass rate from SWE-bench Verified to compiler-bug benchmarks.
+
+## Reproducing the verified end-to-end run
+
+```bash
+# Apply patches to clean source trees
+git -C llvm-project checkout llvmorg-18.1.3
+git -C llvm-project apply ../reference-solution/solution.patch
+
+git -C riscv-isa-sim apply ../spike-patch/0001-add-xbestisa-extension.patch
+
+# Build (incremental on warm caches: LLVM ~60s, Spike ~3min)
+ninja -C llvm-project/build clang llc llvm-mc llvm-objdump
+( cd riscv-isa-sim/build && ./config.status && make -j$(nproc) spike )
+
+# Run the e2e demo (compiles a 3-function C program, runs both
+# xbestisa and baseline builds on Spike, byte-exact diffs stdout)
+LLVM_SRC=$PWD/llvm-project SPIKE_SRC=$PWD/riscv-isa-sim \
+PK_BIN=$PWD/riscv-pk/build/pk RISCV_TOOLS=$PWD/riscv-toolchain \
+bash scripts/run_real_demo.sh
+```
+
+Expected: `[demo] ✓ outputs match byte-exactly` and `scorecard.json` showing `stdout_byte_exact: true`. See `reference-solution/E2E_LOG.txt` for the captured 2026-05-01 run.
 
 ## License
 

@@ -70,7 +70,7 @@ The load-bearing tier. Spike with the pre-installed `XBestISA` semantics is the 
 For each of the 30 programs in `tests/correctness/`:
 1. Compile twice:
    - **Agent build**: `clang --target=riscv64-unknown-elf -march=rv64gc_xbestisa -O2 prog.c -o prog.xbestisa.elf`
-   - **Reference build**: `clang --target=riscv64-unknown-elf -march=rv64gc -O2 prog.c -o prog.baseline.elf` (using the unmodified upstream LLVM 22.1.0 toolchain at `reference-toolchain/`)
+   - **Reference build**: `clang --target=riscv64-unknown-elf -march=rv64gc -O2 prog.c -o prog.baseline.elf` (using the unmodified upstream LLVM 18.1.3 toolchain at `reference-toolchain/`)
 2. Run both under appropriate Spike:
    - `spike --isa=rv64gc_xbestisa pk prog.xbestisa.elf > out.xbestisa.txt`
    - `spike --isa=rv64gc pk prog.baseline.elf > out.baseline.txt`
@@ -99,7 +99,7 @@ Score = `1.5 × snippets_passing`, max 15.
 ## Tier 3b — No opcode-set regression (5 pts)
 
 - 50 baseline `.c` files in `tests/regression/baseline_codegen/`.
-- Compile each twice: once with the agent's clang, once with `reference-toolchain/clang` (unmodified `llvmorg-22.1.0`).
+- Compile each twice: once with the agent's clang, once with `reference-toolchain/clang` (unmodified `llvmorg-18.1.3`).
 - Both compilations use `-O2 --target=riscv64-unknown-elf -march=rv64gc` (NO `xbestisa` — pure baseline check).
 - For each file, `llvm-objdump -d` opcode-mnemonic histograms must be **identical**.
 - Score = `5 × matching / 50`.
@@ -161,4 +161,4 @@ Score = `1.5 × snippets_passing`, max 15.
 
 ## Reproducibility guarantee
 
-Given the same agent submission (same `git diff` against `llvmorg-22.1.0`) and the same starting Docker image, two independent `grade.sh` runs produce **bit-identical** `scorecard.json` files (modulo the `timestamp_utc` field).
+Given the same agent submission (same `git diff` against `llvmorg-18.1.3`) and the same starting Docker image, two independent `grade.sh` runs produce **bit-identical** `scorecard.json` files (modulo the `timestamp_utc` field).

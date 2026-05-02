@@ -7,9 +7,9 @@
 
 FROM ubuntu:24.04@sha256:<TBD-digest-pinned-at-package-time>
 
-ARG LLVM_TAG=llvmorg-22.1.0
+ARG LLVM_TAG=llvmorg-18.1.3
 ARG SPIKE_COMMIT=<TBD>
-ARG TEST_SUITE_TAG=llvmorg-22.1.0
+ARG TEST_SUITE_TAG=llvmorg-18.1.3
 ARG DEBIAN_FRONTEND=noninteractive
 
 # 1. Base toolchain

@@ -4,10 +4,10 @@
 
 | Component | Pin | Source |
 |---|---|---|
-| `llvm-project` | tag `llvmorg-22.1.0` (commit will be set when packaging) | https://github.com/llvm/llvm-project |
+| `llvm-project` | tag `llvmorg-18.1.3` (commit will be set when packaging) | https://github.com/llvm/llvm-project |
 | `riscv-isa-sim` (Spike) | commit `<TBD-pin-at-package-time>` | https://github.com/riscv-software-src/riscv-isa-sim |
 | `riscv-pk` (proxy kernel) | matching Spike tag | https://github.com/riscv-software-src/riscv-pk |
-| `llvm-test-suite` | tag `llvmorg-22.1.0` | https://github.com/llvm/llvm-test-suite |
+| `llvm-test-suite` | tag `llvmorg-18.1.3` | https://github.com/llvm/llvm-test-suite |
 | Ubuntu base image | `ubuntu:24.04` | Docker Hub digest pinned |
 | `XBestISA` ISA spec | v1.0 (this repo) | `docs/XBestISA_spec.md` |
 
@@ -16,7 +16,7 @@ All source pins are recorded in `docker/Dockerfile` as exact commit SHAs / image
 ## Determinism guarantees
 
 The grader (`grader/grade.sh`) is deterministic given:
-1. The same agent submission (same `git diff` against `llvmorg-22.1.0`).
+1. The same agent submission (same `git diff` against `llvmorg-18.1.3`).
 2. The same starting Docker image.
 3. The same host CPU architecture (x86_64).
 
@@ -47,7 +47,7 @@ The hash is also recorded in `scorecard.json` as `oracle_sha256_ok: true|false`.
 
 ## Reference toolchain
 
-`reference-toolchain/` in the Docker image is an **unmodified** build of `llvmorg-22.1.0` (no `XBestISA` patches). Used by:
+`reference-toolchain/` in the Docker image is an **unmodified** build of `llvmorg-18.1.3` (no `XBestISA` patches). Used by:
 
 - **Tier 2**: compile each test program a second time with `-march=rv64gc` (no extension) for the bit-exact stdout comparison.
 - **Tier 3b**: opcode-histogram baseline for the no-regression check.

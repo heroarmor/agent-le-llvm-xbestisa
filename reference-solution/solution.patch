@@ -1,0 +1,216 @@
+diff --git a/llvm/lib/Support/RISCVISAInfo.cpp b/llvm/lib/Support/RISCVISAInfo.cpp
+index db2e4ca92..636a0be82 100644
+--- a/llvm/lib/Support/RISCVISAInfo.cpp
++++ b/llvm/lib/Support/RISCVISAInfo.cpp
+@@ -64,6 +64,7 @@ static const RISCVSupportedExtension SupportedExtensions[] = {
+     {"v", {1, 0}},
+ 
+     // vendor-defined ('X') extensions
++    {"xbestisa", {1, 0}},
+     {"xcvalu", {1, 0}},
+     {"xcvbi", {1, 0}},
+     {"xcvbitmanip", {1, 0}},
+diff --git a/llvm/lib/Target/RISCV/RISCVFeatures.td b/llvm/lib/Target/RISCV/RISCVFeatures.td
+index 26451c80f..c341e8f69 100644
+--- a/llvm/lib/Target/RISCV/RISCVFeatures.td
++++ b/llvm/lib/Target/RISCV/RISCVFeatures.td
+@@ -1085,3 +1085,11 @@ def FeatureTaggedGlobals : SubtargetFeature<"tagged-globals",
+     "AllowTaggedGlobals",
+     "true", "Use an instruction sequence for taking the address of a global "
+     "that allows a memory tag in the upper address bits">;
++
++// Best_ISA Custom Extension
++def FeatureVendorBestISA
++    : SubtargetFeature<"xbestisa", "HasVendorBestISA", "true",
++                       "'XBestISA' (Best_ISA Custom Compound Instructions)">;
++def HasVendorBestISA : Predicate<"Subtarget->hasVendorBestISA()">,
++                       AssemblerPredicate<(all_of FeatureVendorBestISA),
++                           "'XBestISA' (Best_ISA Custom Compound Instructions)">;
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.td b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+index 114329c2c..dc9cd9692 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.td
+@@ -2179,6 +2179,7 @@ include "RISCVInstrInfoXVentana.td"
+ include "RISCVInstrInfoXTHead.td"
+ include "RISCVInstrInfoXSf.td"
+ include "RISCVInstrInfoXCV.td"
++include "RISCVInstrInfoBestISA.td"
+ 
+ //===----------------------------------------------------------------------===//
+ // Global ISel
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfoBestISA.td b/llvm/lib/Target/RISCV/RISCVInstrInfoBestISA.td
+new file mode 100644
+index 000000000..1265618bc
+--- /dev/null
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfoBestISA.td
+@@ -0,0 +1,170 @@
++//===-- RISCVInstrInfoBestISA.td - Best_ISA custom instructions -*- tablegen -*-===//
++//
++// Custom compound instructions synthesized by the Best_ISA system.
++// All use RISC-V custom-0 opcode (0x0B).
++//===----------------------------------------------------------------------===//
++
++// Uses OPC_CUSTOM_0 already defined in RISCVInstrFormats.td (opcode 0b0001011)
++
++//===----------------------------------------------------------------------===//
++// Instruction formats
++//===----------------------------------------------------------------------===//
++
++// R4-type for custom-0 (3-source instructions: rd = f(rs1, rs2, rs3))
++class BestISA_R4<bits<2> funct2, bits<3> funct3, dag outs, dag ins,
++                  string opcodestr, string argstr, list<dag> pattern>
++    : RVInst<outs, ins, opcodestr, argstr, pattern, InstFormatR4> {
++  bits<5> rs3;
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<5> rd;
++
++  let Inst{31-27} = rs3;
++  let Inst{26-25} = funct2;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++  let Inst{6-0} = OPC_CUSTOM_0.Value;
++}
++
++// R-type for custom-0 (2-source instructions)
++class BestISA_R<bits<7> funct7, bits<3> funct3, dag outs, dag ins,
++                 string opcodestr, string argstr, list<dag> pattern>
++    : RVInst<outs, ins, opcodestr, argstr, pattern, InstFormatR> {
++  bits<5> rs2;
++  bits<5> rs1;
++  bits<5> rd;
++
++  let Inst{31-25} = funct7;
++  let Inst{24-20} = rs2;
++  let Inst{19-15} = rs1;
++  let Inst{14-12} = funct3;
++  let Inst{11-7} = rd;
++  let Inst{6-0} = OPC_CUSTOM_0.Value;
++}
++
++//===----------------------------------------------------------------------===//
++// Instruction definitions
++//===----------------------------------------------------------------------===//
++
++let Predicates = [HasVendorBestISA] in {
++
++// MAC: rd = rs1 * rs2 + rs3  (multiply-accumulate)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
++def BESTISA_MAC : BestISA_R4<0b00, 0b001, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.mac", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIMul, ReadIMul, ReadIMul, ReadIALU]>;
++
++// SHA256_CH: rd = (rs1 & rs2) ^ (~rs1 & rs3)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
++def BESTISA_SHA256CH : BestISA_R4<0b00, 0b000, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.sha256ch", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIALU, ReadIALU, ReadIALU, ReadIALU]>;
++
++// SHA256_MAJ: rd = (rs1 & rs2) ^ (rs1 & rs3) ^ (rs2 & rs3)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
++def BESTISA_SHA256MAJ : BestISA_R4<0b01, 0b000, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.sha256maj", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIALU, ReadIALU, ReadIALU, ReadIALU]>;
++
++// ADD3: rd = rs1 + rs2 + rs3  (3-operand addition)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
++def BESTISA_ADD3 : BestISA_R4<0b10, 0b000, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.add3", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIALU, ReadIALU, ReadIALU, ReadIALU]>;
++
++// XOR3: rd = rs1 ^ rs2 ^ rs3  (3-operand XOR)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCommutable = 1 in
++def BESTISA_XOR3 : BestISA_R4<0b00, 0b010, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.xor3", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIALU, ReadIALU, ReadIALU, ReadIALU]>;
++
++// OR3: rd = rs1 | rs2 | rs3  (3-operand OR)
++let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCommutable = 1 in
++def BESTISA_OR3 : BestISA_R4<0b00, 0b011, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2, GPR:$rs3),
++    "bestisa.or3", "$rd, $rs1, $rs2, $rs3", []>,
++    Sched<[WriteIALU, ReadIALU, ReadIALU, ReadIALU]>;
++
++// LOAD_RR: rd = mem[rs1 + rs2]  (register+register word load)
++let hasSideEffects = 0, mayLoad = 1, mayStore = 0 in
++def BESTISA_LW_RR : BestISA_R<0b0000000, 0b010, (outs GPR:$rd),
++    (ins GPR:$rs1, GPR:$rs2),
++    "bestisa.lw", "$rd, $rs1, $rs2", []>,
++    Sched<[WriteLDW, ReadMemBase, ReadMemBase]>;
++
++} // Predicates = [HasVendorBestISA]
++
++//===----------------------------------------------------------------------===//
++// DAG Patterns
++//===----------------------------------------------------------------------===//
++
++let Predicates = [HasVendorBestISA] in {
++
++// --- ADD3: rd = rs1 + rs2 + rs3 ---
++// Matches (add (add x, y), z) and all commutations
++def : Pat<(XLenVT (add (add GPR:$rs1, GPR:$rs2), GPR:$rs3)),
++          (BESTISA_ADD3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++def : Pat<(XLenVT (add GPR:$rs3, (add GPR:$rs1, GPR:$rs2))),
++          (BESTISA_ADD3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++
++// --- XOR3: rd = rs1 ^ rs2 ^ rs3 ---
++def : Pat<(XLenVT (xor (xor GPR:$rs1, GPR:$rs2), GPR:$rs3)),
++          (BESTISA_XOR3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++def : Pat<(XLenVT (xor GPR:$rs3, (xor GPR:$rs1, GPR:$rs2))),
++          (BESTISA_XOR3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++
++// --- OR3: rd = rs1 | rs2 | rs3 ---
++def : Pat<(XLenVT (or (or GPR:$rs1, GPR:$rs2), GPR:$rs3)),
++          (BESTISA_OR3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++def : Pat<(XLenVT (or GPR:$rs3, (or GPR:$rs1, GPR:$rs2))),
++          (BESTISA_OR3 GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++
++// --- MAC: DISABLED — requires multiplier pipeline changes on CVA6 ---
++// def : Pat<(XLenVT (add (mul GPR:$rs1, GPR:$rs2), GPR:$rs3)),
++//           (BESTISA_MAC GPR:$rs1, GPR:$rs2, GPR:$rs3)>;
++
++// --- SHA256_CH: (x & y) ^ (~x & z) ---
++// All commutations that LLVM might generate:
++def : Pat<(XLenVT (xor (and GPR:$x, GPR:$y), (and (not GPR:$x), GPR:$z))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++def : Pat<(XLenVT (xor (and GPR:$x, GPR:$y), (and GPR:$z, (not GPR:$x)))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++// LLVM canonicalizes xor to or when operands are disjoint
++def : Pat<(XLenVT (or (and GPR:$x, GPR:$y), (and (not GPR:$x), GPR:$z))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++def : Pat<(XLenVT (or (and GPR:$x, GPR:$y), (and GPR:$z, (not GPR:$x)))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++// Commuted outer: or(and(~x,z), and(x,y))
++def : Pat<(XLenVT (or (and (not GPR:$x), GPR:$z), (and GPR:$x, GPR:$y))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++def : Pat<(XLenVT (or (and GPR:$z, (not GPR:$x)), (and GPR:$x, GPR:$y))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++// Alternate: z ^ (x & (y ^ z))
++def : Pat<(XLenVT (xor GPR:$z, (and GPR:$x, (xor GPR:$y, GPR:$z)))),
++          (BESTISA_SHA256CH GPR:$x, GPR:$y, GPR:$z)>;
++
++// --- SHA256_MAJ: (x&y) | (z & (x^y))  [equivalent to (x&y)^(x&z)^(y&z)] ---
++def : Pat<(XLenVT (or (and GPR:$x, GPR:$y), (and GPR:$z, (xor GPR:$x, GPR:$y)))),
++          (BESTISA_SHA256MAJ GPR:$x, GPR:$y, GPR:$z)>;
++def : Pat<(XLenVT (or (and GPR:$z, (xor GPR:$x, GPR:$y)), (and GPR:$x, GPR:$y))),
++          (BESTISA_SHA256MAJ GPR:$x, GPR:$y, GPR:$z)>;
++// LLVM may generate: or(and(b, or(c,d)), and(c,d)) for Maj
++def : Pat<(XLenVT (or (and GPR:$x, (or GPR:$y, GPR:$z)), (and GPR:$y, GPR:$z))),
++          (BESTISA_SHA256MAJ GPR:$x, GPR:$y, GPR:$z)>;
++def : Pat<(XLenVT (or (and GPR:$y, GPR:$z), (and GPR:$x, (or GPR:$y, GPR:$z)))),
++          (BESTISA_SHA256MAJ GPR:$x, GPR:$y, GPR:$z)>;
++
++// --- LOAD_RR: load(add(rs1, rs2)) ---
++def : Pat<(i32 (load (add GPR:$rs1, GPR:$rs2))),
++          (BESTISA_LW_RR GPR:$rs1, GPR:$rs2)>;
++
++// --- STORE_RR removed: encoding issues with no rd field ---
++
++} // Predicates = [HasVendorBestISA]

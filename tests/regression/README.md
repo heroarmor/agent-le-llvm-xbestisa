@@ -12,7 +12,7 @@ The shipped file lists every test under:
 - `clang/test/Driver/riscv-*.c`
 - `clang/test/Preprocessor/riscv-target-features.c`
 
-…that exist in `llvmorg-22.1.0`. Total: ~1,850 tests.
+…that exist in `llvmorg-18.1.3`. Total: ~1,850 tests.
 
 If the agent **modifies** any test in this list, Tier 0 fails (forbidden-paths check). The agent may **add** new test files alongside them.
 

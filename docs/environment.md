@@ -87,11 +87,11 @@ For `clang --target=riscv64-unknown-elf`:
 ## Docker image
 
 See `docker/Dockerfile`. Pre-built image: ~12 GB compressed, ~25 GB uncompressed. Contains:
-- pinned `llvm-project` source @ `llvmorg-22.1.0`
+- pinned `llvm-project` source @ `llvmorg-18.1.3`
 - pre-built `build/` directory + warm ccache (~30 GB ccache pre-populated)
 - pre-built Spike binary with `XBestISA` semantics
 - `llvm-test-suite` checkout
-- `reference-toolchain/` — unmodified upstream `llvmorg-22.1.0` build for Tier 2 / Tier 3b reference
+- `reference-toolchain/` — unmodified upstream `llvmorg-18.1.3` build for Tier 2 / Tier 3b reference
 - All apt dependencies installed
 
 ```bash

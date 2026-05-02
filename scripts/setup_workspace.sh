@@ -5,9 +5,9 @@
 # Assumes Ubuntu 24.04 with apt available. Will install ~3 GB of packages.
 set -euo pipefail
 
-LLVM_TAG="llvmorg-22.1.0"
+LLVM_TAG="llvmorg-18.1.3"
 SPIKE_COMMIT="<TBD-pin-at-package-time>"
-TEST_SUITE_TAG="llvmorg-22.1.0"
+TEST_SUITE_TAG="llvmorg-18.1.3"
 
 WORK_DIR="${WORK_DIR:-$PWD}"
 

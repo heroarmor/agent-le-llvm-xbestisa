@@ -1,0 +1,63 @@
+=== Reference-solution end-to-end proof ===
+Date: 2026-05-01
+
+INPUT: e2e.c
+=========================================
+#include <stdio.h>
+#include <stdint.h>
+uint64_t xor3(uint64_t a, uint64_t b, uint64_t c) { return a ^ b ^ c; }
+uint64_t add3(uint64_t a, uint64_t b, uint64_t c) { return a + b + c; }
+uint64_t ch  (uint64_t e, uint64_t f, uint64_t g) { return (e & f) ^ (~e & g); }
+int main(void) {
+    uint64_t a=0xDEADBEEFULL, b=0xCAFEBABEULL, c=0x12345678ULL;
+    printf("xor3 = %016lx\n", xor3(a, b, c));
+    printf("add3 = %016lx\n", add3(a, b, c));
+    printf("ch   = %016lx\n", ch(a, b, c));
+    return 0;
+}
+
+STEP 1: compile twice (with/without xbestisa)
+=========================================
+$ clang --target=riscv64-unknown-elf --gcc-toolchain=$RISCV \
+        -march=rv64imac_xbestisa -mabi=lp64 -O2 e2e.c -o e2e.xbestisa.elf
+$ clang --target=riscv64-unknown-elf --gcc-toolchain=$RISCV \
+        -march=rv64imac          -mabi=lp64 -O2 e2e.c -o e2e.baseline.elf
+
+STEP 2: confirm new instructions are emitted
+=========================================
+$ llvm-objdump -d --mattr=+xbestisa e2e.xbestisa.elf | grep bestisa
+00000000000101dc <xor3>:
+   101dc: 0b a5 a5 60   bestisa.xor3   a0, a1, a0, a2
+00000000000101e2 <add3>:
+   101e2: 0b 85 a5 64   bestisa.add3   a0, a1, a0, a2
+00000000000101e8 <ch>:
+   101e8: 0b 05 b5 60   bestisa.sha256ch a0, a0, a1, a2
+
+→ ISel selected bestisa.xor3, bestisa.add3, bestisa.sha256ch from idiomatic C.
+
+STEP 3: run on patched Spike (oracle)
+=========================================
+$ spike --isa=rv64imac_zicsr_zifencei_xbestisa pk e2e.xbestisa.elf
+xor3 = 0000000006675229
+add3 = 00000001bbe0d025
+ch   = 00000000cabcfabe
+
+STEP 4: run baseline on baseline Spike
+=========================================
+$ spike --isa=rv64imac_zicsr_zifencei pk e2e.baseline.elf
+xor3 = 0000000006675229
+add3 = 00000001bbe0d025
+ch   = 00000000cabcfabe
+
+STEP 5: byte-exact diff
+=========================================
+$ diff e2e.xbestisa.out e2e.baseline.out
+(no output — byte-exact match)
+
+CONCLUSION: ✓ END-TO-END PASSES
+- LLVM patch applies cleanly to llvmorg-18.1.3
+- Spike patch applies cleanly to current riscv-isa-sim
+- Both build green
+- Idiomatic C is selected to BestISA instructions by ISel
+- Spike with patched semantics produces byte-exact same output as baseline
+- Tier 2 of the rubric (differential execution on Spike) is demonstrated to work
