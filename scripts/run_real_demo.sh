@@ -62,7 +62,7 @@ echo "[demo] step 3/5: applying Spike patch + building ..."
   git apply         "$REPO_DIR/spike-patch/0001-add-xbestisa-extension.patch" \
 ) 2>&1 | tee "$WORK_DIR/spike.applied.log"
 [[ -d "$SPIKE_SRC/build" ]] || ( cd "$SPIKE_SRC" && mkdir build && cd build && \
-    ../configure --prefix=$PWD/../install >/dev/null )
+    ../configure --prefix="$PWD"/../install >/dev/null )
 ( cd "$SPIKE_SRC/build" && ./config.status >/dev/null 2>&1 && \
   make -j"$(nproc)" spike 2>&1 | tail -3 ) | tee -a "$WORK_DIR/spike.applied.log"
 SPIKE="$SPIKE_SRC/build/spike"
