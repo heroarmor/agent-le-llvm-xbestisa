@@ -6,7 +6,9 @@
 set -euo pipefail
 
 LLVM_TAG="llvmorg-18.1.3"
-SPIKE_COMMIT="<TBD-pin-at-package-time>"
+LLVM_COMMIT="ae96967dcb2001160069230bbb94d549384b28c1"
+SPIKE_COMMIT="0ad45926ac6f42d0d39e936abf4ab1cb9bdc5086"
+PK_COMMIT="9c61d29846d8521d9487a57739330f9682d5b542"
 TEST_SUITE_TAG="llvmorg-18.1.3"
 
 WORK_DIR="${WORK_DIR:-$PWD}"
@@ -38,16 +40,32 @@ cmake -G Ninja -S "$WORK_DIR/llvm-project/llvm" -B "$WORK_DIR/llvm-project/build
 echo "[setup] building LLVM (cold build, ~30 min)..."
 ninja -C "$WORK_DIR/llvm-project/build" clang llc llvm-mc llvm-tblgen FileCheck llvm-objdump
 
-echo "[setup] cloning + patching Spike..."
+echo "[setup] cloning + patching Spike at pinned SHA..."
 [[ -d "$WORK_DIR/spike" ]] \
     || git clone https://github.com/riscv-software-src/riscv-isa-sim.git "$WORK_DIR/spike"
 (
     cd "$WORK_DIR/spike"
-    git checkout "$SPIKE_COMMIT" || echo "WARN: pinned commit not available, using HEAD"
-    patch -p1 < "$WORK_DIR/spike-patch/0001-add-xbestisa-extension.patch" || true
+    git fetch --depth 1 origin "$SPIKE_COMMIT" 2>/dev/null || true
+    git checkout "$SPIKE_COMMIT"
+    git apply "$WORK_DIR/spike-patch/0001-add-xbestisa-extension.patch"
     mkdir -p build && cd build
-    ../configure --prefix="$WORK_DIR/spike/install" --with-isa=rv64gc_xbestisa
-    make -j"$(nproc)" install
+    ../configure --prefix="$WORK_DIR/spike/install"
+    make -j"$(nproc)" spike spike-dasm
+    make install
+)
+
+echo "[setup] cloning + building pk at pinned SHA..."
+[[ -d "$WORK_DIR/riscv-pk" ]] \
+    || git clone https://github.com/riscv-software-src/riscv-pk.git "$WORK_DIR/riscv-pk"
+(
+    cd "$WORK_DIR/riscv-pk"
+    git fetch --depth 1 origin "$PK_COMMIT" 2>/dev/null || true
+    git checkout "$PK_COMMIT"
+    mkdir -p build && cd build
+    ../configure --prefix="$WORK_DIR/spike/install" --host=riscv64-unknown-elf \
+        --with-arch=rv64imac_zicsr_zifencei --with-abi=lp64
+    make pk -j"$(nproc)"
+    cp pk "$WORK_DIR/spike/install/bin/pk"
 )
 
 echo "[setup] cloning llvm-test-suite..."

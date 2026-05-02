@@ -5,10 +5,13 @@
 # Size:   ~12 GB compressed, ~25 GB uncompressed
 # Build wall-time: ~45 minutes on 16 vCPU
 
-FROM ubuntu:24.04@sha256:<TBD-digest-pinned-at-package-time>
+FROM ubuntu:24.04
 
+# Pinned commit SHAs (verified working as of 2026-05-01).
 ARG LLVM_TAG=llvmorg-18.1.3
-ARG SPIKE_COMMIT=<TBD>
+ARG LLVM_COMMIT=ae96967dcb2001160069230bbb94d549384b28c1
+ARG SPIKE_COMMIT=0ad45926ac6f42d0d39e936abf4ab1cb9bdc5086
+ARG PK_COMMIT=9c61d29846d8521d9487a57739330f9682d5b542
 ARG TEST_SUITE_TAG=llvmorg-18.1.3
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -60,21 +63,25 @@ RUN cp -r llvm-project reference-llvm-project \
     && ninja -C reference-llvm-project/build install \
     && rm -rf reference-llvm-project   # keep only the installed binaries
 
-# 5. Spike (oracle) — clone, apply patch, build, hash
+# 5. Spike (oracle) — clone at pinned SHA, apply patch, build, hash
 COPY spike-patch /tmp/spike-patch
 RUN git clone https://github.com/riscv-software-src/riscv-isa-sim.git spike \
     && cd spike && git checkout ${SPIKE_COMMIT} \
-    && patch -p1 < /tmp/spike-patch/0001-add-xbestisa-extension.patch \
+    && git apply /tmp/spike-patch/0001-add-xbestisa-extension.patch \
     && mkdir -p build && cd build \
-    && ../configure --prefix=/work/spike/install --with-isa=rv64gc_xbestisa \
-    && make -j$(nproc) install \
+    && ../configure --prefix=/work/spike/install \
+    && make -j$(nproc) spike spike-dasm \
+    && make install \
     && sha256sum /work/spike/install/bin/spike > /work/spike/built-binary.sha256
 
-# 6. riscv-pk (proxy kernel) for `pk` syscall shim under Spike
+# 6. riscv-pk (proxy kernel) at pinned SHA, built for rv64imac_zicsr_zifencei
 RUN git clone https://github.com/riscv-software-src/riscv-pk.git \
-    && cd riscv-pk && mkdir build && cd build \
-    && ../configure --prefix=/work/spike/install --host=riscv64-unknown-elf --with-arch=rv64gc \
-    && make -j$(nproc) install
+    && cd riscv-pk && git checkout ${PK_COMMIT} \
+    && mkdir build && cd build \
+    && ../configure --prefix=/work/spike/install --host=riscv64-unknown-elf \
+        --with-arch=rv64imac_zicsr_zifencei --with-abi=lp64 \
+    && make pk -j$(nproc) \
+    && cp pk /work/spike/install/bin/pk
 
 # 7. llvm-test-suite
 RUN git clone --depth 1 --branch ${TEST_SUITE_TAG} \

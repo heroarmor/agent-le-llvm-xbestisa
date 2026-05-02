@@ -8,6 +8,8 @@
 > **Estimated expert time:** 1.5–2 days (experienced LLVM backend engineer; see `reference-solution/walkthrough.md` §5)
 > **Agent wall-clock budget:** 24 hours
 > **Reference solution status:** ✅ **Real & verified end-to-end as of 2026-05-01** — see `reference-solution/E2E_LOG.txt` for the actual build + Spike-execution proof.
+>
+> **Runtime environment:** prebuilt oracle binaries (Spike + pk, 10 MB total, SHA-pinned) are at the [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries). Full setup, including what's in the 38 KB input archive vs what's fetched at runtime, is documented in [`SETUP.md`](SETUP.md).
 
 ## What this task asks
 
