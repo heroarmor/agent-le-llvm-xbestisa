@@ -1,0 +1,4 @@
+	.text
+	bestisa.add3	a0, a1, a2, a3          # encoding: [0x0b,0x85,0xc5,0x6c]
+	bestisa.add3	a0, a1, a2, a3          # encoding: [0x0b,0x85,0xc5,0x6c]
+	bestisa.add3	a0, a1, a2, a3          # encoding: [0x0b,0x85,0xc5,0x6c]

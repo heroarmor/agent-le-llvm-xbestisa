@@ -1,0 +1,3 @@
+	.text
+	bestisa.sha256ch	a0, a1, a2, a3          # encoding: [0x0b,0x85,0xc5,0x68]
+	bestisa.sha256ch	t0, t1, t2, t3          # encoding: [0x8b,0x02,0x73,0xe0]
