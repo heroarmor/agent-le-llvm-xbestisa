@@ -13,7 +13,7 @@
 | **Input archive** (`agent-le-input.tar.gz`) | **38 KB** | This repo + form upload | TASK.md, docs/, tests/ corpus, grader/, patches in `spike-patch/`, examples/, scripts/, Dockerfile. **The harness.** |
 | **Reference output** (`agent-le-output.tar.gz`) | **12 KB** | This repo + form upload | `solution.patch` (216 LOC), scorecard.json, BUILD_LOG.txt, E2E_LOG.txt, walkthrough.md. **The gold standard.** |
 | **Pre-built oracle binaries** | **10 MB** | [GitHub Release v1.0-binaries](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries) | `spike-xbestisa` (the patched Spike, the **correctness oracle**), `pk-rv64imac` (proxy kernel). Stripped binaries with verified SHA-256. |
-| **Pre-built Docker image** | **1.54 GB** | [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz) | `agent-le-xbestisa-1.0-image.tar.gz` — full reproducible runtime: Ubuntu 24.04 + apt deps + LLVM source + pre-built clang/llc/llvm-mc + Spike + pk + harness. SHA-256: `baabd966471b7c326aab4c1b9b66e294cd60bf7f5e2373a484c9c04309b5ade6`. **Recommended starting point.** |
+| **Pre-built Docker image** | **1.54 GB** | [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz) | `agent-le-xbestisa-1.0-image.tar.gz` — full reproducible runtime: Ubuntu 24.04 + apt deps + LLVM source + pre-built clang/llc/llvm-mc + Spike + pk + harness. SHA-256: `ac071083e2867f4632f8af3c1bb59ebce7977149bb39f0362626f1b97625b4ec`. **Recommended starting point.** |
 | **LLVM 18.1.3 source** | **~1.3 GB** | [github.com/llvm/llvm-project](https://github.com/llvm/llvm-project) tag `llvmorg-18.1.3` (commit `c13b7485b87909fcf739f62cfa382b55407433c0`) | Cloned by the Dockerfile / setup script. The agent's working tree. |
 | **LLVM build/** | **~5 GB** | Built locally (cold ~30 min, warm ccache ~60 s incremental) | `clang`, `llc`, `llvm-mc`, etc. — what the agent rebuilds after editing `.td` files. |
 | **Spike source** | **~30 MB** | [github.com/riscv-software-src/riscv-isa-sim](https://github.com/riscv-software-src/riscv-isa-sim) commit `0ad45926ac6f42d0d39e936abf4ab1cb9bdc5086` | Used to rebuild Spike from scratch if the prebuilt binary's SHA doesn't match for some reason. |
@@ -33,7 +33,7 @@ baked in. Verified end-to-end on 2026-05-02.
 ```bash
 # 1. Download the image (1.54 GB, public, no auth)
 wget https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz
-sha256sum -c <(echo "baabd966471b7c326aab4c1b9b66e294cd60bf7f5e2373a484c9c04309b5ade6  agent-le-xbestisa-1.0-image.tar.gz")
+sha256sum -c <(echo "ac071083e2867f4632f8af3c1bb59ebce7977149bb39f0362626f1b97625b4ec  agent-le-xbestisa-1.0-image.tar.gz")
 
 # 2. Load into Docker (~30 sec)
 docker load < agent-le-xbestisa-1.0-image.tar.gz
