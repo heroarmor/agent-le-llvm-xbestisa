@@ -9,7 +9,12 @@
 > **Agent wall-clock budget:** 24 hours
 > **Reference solution status:** ✅ **Real & verified end-to-end as of 2026-05-01** — see `reference-solution/E2E_LOG.txt` for the actual build + Spike-execution proof.
 >
-> **Runtime environment:** prebuilt oracle binaries (Spike + pk, 10 MB total, SHA-pinned) are at the [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries). Full setup, including what's in the 38 KB input archive vs what's fetched at runtime, is documented in [`SETUP.md`](SETUP.md).
+> **Runtime environment:**
+> - 🐳 **Docker image** (recommended, ~3 min): `wget …/agent-le-xbestisa-1.0-image.tar.gz && docker load` — full pre-built environment with LLVM, Spike, pk, toolchain, harness. **No network access needed at runtime.**
+> - ⚡ **Oracle binaries only** (10 MB): Spike + pk individually, for evaluators who want to manage LLVM separately.
+> - ❄️ **Cold from source** (~45 min): `bash scripts/setup_workspace.sh` builds everything from upstream pinned commits.
+>
+> All paths point to the [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries). Full setup matrix, what's in each layer, and SHA pins: [`SETUP.md`](SETUP.md).
 
 ## What this task asks
 

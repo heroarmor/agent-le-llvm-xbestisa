@@ -1,6 +1,8 @@
 # Setup — what's where, and how to get the agent runnable
 
-> **TL;DR:** The 38 KB input archive is the **harness** (task spec, grader, tests, patches). The multi-GB **runtime environment** (LLVM source + build, Spike, pk, toolchain) is fetched from public sources at pinned commit SHAs OR pulled prebuilt from the GitHub Release. Two paths are documented below: **fast** (~5 min, uses Release binaries) and **cold** (~45 min, builds everything from scratch).
+> **TL;DR:** The 41 KB input archive is the **harness** (task spec, grader, tests, patches). The full **runtime environment is delivered as a 1.54 GB Docker image tarball** at the [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries). Three paths are documented below: **Docker image** (~3 min, recommended), **fast bootstrap** (~35 min, uses Release oracle binaries + builds LLVM), and **cold-from-source** (~45 min, builds everything from upstream pinned commits).
+>
+> **The agent does NOT need network access at runtime.** All artifacts (LLVM source, pre-built clang/llc/llvm-mc, patched Spike, pk, riscv-toolchain, harness) are baked into the Docker image. Network is only needed once — at image-pull time.
 
 ---
 
@@ -11,7 +13,8 @@
 | **Input archive** (`agent-le-input.tar.gz`) | **38 KB** | This repo + form upload | TASK.md, docs/, tests/ corpus, grader/, patches in `spike-patch/`, examples/, scripts/, Dockerfile. **The harness.** |
 | **Reference output** (`agent-le-output.tar.gz`) | **12 KB** | This repo + form upload | `solution.patch` (216 LOC), scorecard.json, BUILD_LOG.txt, E2E_LOG.txt, walkthrough.md. **The gold standard.** |
 | **Pre-built oracle binaries** | **10 MB** | [GitHub Release v1.0-binaries](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries) | `spike-xbestisa` (the patched Spike, the **correctness oracle**), `pk-rv64imac` (proxy kernel). Stripped binaries with verified SHA-256. |
-| **LLVM 18.1.3 source** | **~1.3 GB** | [github.com/llvm/llvm-project](https://github.com/llvm/llvm-project) tag `llvmorg-18.1.3` (commit `ae96967dcb2001160069230bbb94d549384b28c1`) | Cloned by the Dockerfile / setup script. The agent's working tree. |
+| **Pre-built Docker image** | **1.54 GB** | [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz) | `agent-le-xbestisa-1.0-image.tar.gz` — full reproducible runtime: Ubuntu 24.04 + apt deps + LLVM source + pre-built clang/llc/llvm-mc + Spike + pk + harness. SHA-256: `baabd966471b7c326aab4c1b9b66e294cd60bf7f5e2373a484c9c04309b5ade6`. **Recommended starting point.** |
+| **LLVM 18.1.3 source** | **~1.3 GB** | [github.com/llvm/llvm-project](https://github.com/llvm/llvm-project) tag `llvmorg-18.1.3` (commit `c13b7485b87909fcf739f62cfa382b55407433c0`) | Cloned by the Dockerfile / setup script. The agent's working tree. |
 | **LLVM build/** | **~5 GB** | Built locally (cold ~30 min, warm ccache ~60 s incremental) | `clang`, `llc`, `llvm-mc`, etc. — what the agent rebuilds after editing `.td` files. |
 | **Spike source** | **~30 MB** | [github.com/riscv-software-src/riscv-isa-sim](https://github.com/riscv-software-src/riscv-isa-sim) commit `0ad45926ac6f42d0d39e936abf4ab1cb9bdc5086` | Used to rebuild Spike from scratch if the prebuilt binary's SHA doesn't match for some reason. |
 | **riscv-pk source** | **~5 MB** | [github.com/riscv-software-src/riscv-pk](https://github.com/riscv-software-src/riscv-pk) commit `9c61d29846d8521d9487a57739330f9682d5b542` | Same. |
@@ -22,7 +25,43 @@
 
 ---
 
-## Fast path (recommended for evaluators) — ~5 minutes
+## Docker path — ~3 minutes (RECOMMENDED)
+
+Pre-built environment with LLVM, Spike, pk, toolchain, and harness all
+baked in. Verified end-to-end on 2026-05-02.
+
+```bash
+# 1. Download the image (1.54 GB, public, no auth)
+wget https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz
+sha256sum -c <(echo "baabd966471b7c326aab4c1b9b66e294cd60bf7f5e2373a484c9c04309b5ade6  agent-le-xbestisa-1.0-image.tar.gz")
+
+# 2. Load into Docker (~30 sec)
+docker load < agent-le-xbestisa-1.0-image.tar.gz
+
+# 3. Run
+docker run --rm -it agent-le-xbestisa:1.0
+# inside the container:
+#   /work/llvm-project/        pre-cloned + pre-built LLVM 18.1.3 source
+#   /work/llvm-project/build/  pre-built clang/llc/llvm-mc/llvm-mc/llvm-objdump/FileCheck
+#   /usr/local/bin/spike       patched Spike (oracle, READ-ONLY)
+#   /usr/local/bin/pk          riscv-pk proxy kernel
+#   /work/harness/             TASK.md, docs/, tests/, grader/, scripts/, etc.
+```
+
+Inside the container, the agent's iteration loop:
+```bash
+cd /work/harness
+less TASK.md                                              # read the task
+$EDITOR /work/llvm-project/llvm/lib/Target/RISCV/...     # edit
+ninja -C /work/llvm-project/build clang llc llvm-mc      # ~60 s warm rebuild
+bash grader/grade.sh                                      # score
+```
+
+**No network access needed at runtime.** The image bundles everything.
+
+---
+
+## Fast bootstrap path — ~35 minutes
 
 Uses the prebuilt Spike + pk from GitHub Releases, plus a pre-cloned LLVM source tree.
 
@@ -43,7 +82,7 @@ cd ..
 # 3. Get the LLVM source the agent will modify
 git clone --depth 1 --branch llvmorg-18.1.3 https://github.com/llvm/llvm-project.git
 cd llvm-project
-[[ "$(git rev-parse HEAD)" == "ae96967dcb2001160069230bbb94d549384b28c1" ]] || echo "WARN: SHA mismatch"
+[[ "$(git rev-parse HEAD)" == "c13b7485b87909fcf739f62cfa382b55407433c0" ]] || echo "WARN: SHA mismatch"
 
 # 4. Build LLVM (one-time cold ~30 min on 16 vCPU; subsequent edits are 60 s incremental)
 cmake -G Ninja -S llvm -B build \
@@ -94,21 +133,17 @@ This script:
 
 ---
 
-## Docker path (planned, not yet pushed)
+## Building the Docker image from scratch
 
-`docker/Dockerfile` is the canonical reproducible environment, but the resulting ~12 GB image has not yet been pushed to a public registry. Building locally:
+If you want to verify the published image matches a fresh build from source:
 
 ```bash
-docker build -t agent-le-xbestisa:1.0 -f docker/Dockerfile .   # ~45 min
-docker run --rm -v $PWD:/host -it agent-le-xbestisa:1.0 \
-    bash -c 'cd /work && bash grader/grade.sh && cp scorecard.json /host/'
+docker build -t agent-le-xbestisa:1.0 -f docker/Dockerfile .   # ~45 min on 16 vCPU
 ```
 
-When the image is published to GHCR (planned next), the fast path will collapse to:
-```bash
-docker pull ghcr.io/heroarmor/agent-le-xbestisa:1.0   # ~3 min
-docker run ...
-```
+The published image at the v1.0-binaries Release was built using this same
+Dockerfile against pinned commit SHAs (LLVM `c13b7485b…`, Spike `0ad45926…`,
+pk `9c61d298…`).
 
 ---
 
@@ -138,7 +173,7 @@ A focused agent can do 30+ iterations in the 24 h budget.
 | Component | Pin |
 |---|---|
 | Ubuntu base | `ubuntu:24.04` (digest pinned in Dockerfile) |
-| LLVM | tag `llvmorg-18.1.3` = commit `ae96967dcb2001160069230bbb94d549384b28c1` |
+| LLVM | tag `llvmorg-18.1.3` = commit `c13b7485b87909fcf739f62cfa382b55407433c0` |
 | Spike (riscv-isa-sim) | commit `0ad45926ac6f42d0d39e936abf4ab1cb9bdc5086` |
 | riscv-pk | commit `9c61d29846d8521d9487a57739330f9682d5b542` |
 | llvm-test-suite | tag `llvmorg-18.1.3` |

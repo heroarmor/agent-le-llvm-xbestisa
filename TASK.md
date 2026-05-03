@@ -9,10 +9,22 @@ Add **complete LLVM backend support** for a 6-instruction RISC-V vendor extensio
 3. **MC layer round-trip**: All 6 instructions assemble, disassemble, and re-assemble to identical bytes.
 4. **No regression**: Every pre-existing `llvm/test/CodeGen/RISCV/` and `llvm/test/MC/RISCV/` lit test continues to pass.
 
+## How the agent gets dropped into the environment
+
+The runtime environment ships as a Docker image (`agent-le-xbestisa-1.0-image.tar.gz`, 1.54 GB) hosted at the [v1.0-binaries Release](https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/tag/v1.0-binaries). The reviewer / agent-runner does:
+
+```bash
+wget https://github.com/heroarmor/agent-le-llvm-xbestisa/releases/download/v1.0-binaries/agent-le-xbestisa-1.0-image.tar.gz
+docker load < agent-le-xbestisa-1.0-image.tar.gz
+docker run --rm -it agent-le-xbestisa:1.0
+```
+
+Inside the container, the agent's working directory is `/work/`, populated with:
+
 ## Starting state (provided in `/work/`)
 
-- **`llvm-project/`** — pinned to `llvmorg-18.1.3`, pre-built into `build/` with warm `ccache` (~60 s incremental builds for the RISCV target).
-- **`spike/`** — pre-built `riscv-isa-sim` binary that **already implements** the six `XBestISA` instructions in `riscv/insns/bestisa_*.h` and `riscv/encoding.h`. **This is the correctness oracle. You MUST NOT modify it.** A SHA-256 of the oracle binary is verified at the start of each `grade.sh` run.
+- **`/work/llvm-project/`** — pinned to `llvmorg-18.1.3` (commit `c13b7485b87909fcf739f62cfa382b55407433c0`), pre-built into `build/`. Incremental rebuilds after editing `.td`/`.cpp` take ~60 s.
+- **`/usr/local/bin/spike`** — pre-built `riscv-isa-sim` binary that **already implements** the seven `XBestISA` instructions in `riscv/insns/bestisa_*.h` and `riscv/encoding.h`. **This is the correctness oracle. You MUST NOT modify it.** A SHA-256 of the oracle binary is verified at the start of each `grade.sh` run.
 - **`docs/XBestISA_spec.md`** — the ISA specification: mnemonics, R/R4 encoding bit-layouts, pseudocode semantics, pipeline latency. **This is your only requirements document.**
 - **`llvm-test-suite/`** — checked out at the matching tag, configured for `riscv64-unknown-elf` cross-compilation.
 - **`tests/agent_le/`** — task harness (see [`docs/grading_rubric.md`](docs/grading_rubric.md) for full breakdown):
